@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
 #-*- coding:utf-8 -*-
+
+# activate virtual enviroment
+env_path = "/home/theseas/bin/env3.9/bin/activate_this.py"
+try:
+    exec(open(env_path).read(), {'__file__':env_path})
+except:
+    stderr.write("Failed to activate virtual enviroment using "+env_path+" file. Exiting...\n");
+    exit(4)
+
 import pyinotify as notif
 import argparse
 import mysql.connector
@@ -11,6 +20,9 @@ import atexit
 class FileHandler(notif.ProcessEvent):
     def my_init(self, **kwargs):
         self.db = kwargs['db']
+        self.table = kwargs['table']
+        self.identifier = kwargs['identifier']
+        self.field = kwargs['field']
 
     def process_default(self, event):
         if(event.maskname=='IN_CLOSE_WRITE'):
@@ -23,7 +35,7 @@ class FileHandler(notif.ProcessEvent):
             with open(event.pathname, 'r') as template:
                 html = template.read();
                 cursor = self.db.cursor()
-                sql = 'update print_templates set template=%s where identifier=%s'
+                sql = 'update {0} set {2}=%s where {1}=%s'.format(self.table, self.identifier, self.field)
                 try:
                     cursor.execute(sql, (html, filename));
                     self.db.commit()
@@ -42,6 +54,9 @@ def main():
     parser.add_argument('-p', '--password', dest='passwd', nargs='?', help='DB password');
     parser.add_argument('-H', '--host', dest='host', nargs='?', default='localhost', help='DB host');
     parser.add_argument('-D', '--database', dest='database', nargs=1, help='DB name');
+    parser.add_argument('-t', '--table', dest='table', nargs=1, help='DB table name');
+    parser.add_argument('-i', '--identifier', dest='identifier', nargs=1, default='identifier', help='Table identifier field');
+    parser.add_argument('-f', '--field', dest='field', nargs=1, default="template", help='DB template field');
     parser.add_argument('-d', '--directory', dest='dir', nargs='?', default='.', help='Path of the directory that contains the templates');
     args = parser.parse_args();
 
@@ -58,7 +73,14 @@ def main():
         stderr.write(str(e) + '\n');
         exit(1);
 
-    handler = FileHandler(db=db);
+    table = 'print_templates'
+    if(args.table!=None):
+        table = args.table[0]
+    if(args.identifier!=None):
+        identifier = args.identifier
+    if(args.field!=None):
+        field = args.field
+    handler = FileHandler(db=db, table=table, identifier=identifier, field=field);
     wm = notif.WatchManager();
     notifier = notif.Notifier(wm, default_proc_fun=handler);
     atexit.register(cleanup, notifier, db)
